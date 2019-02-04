@@ -1,7 +1,9 @@
 from keras import backend as K
 from keras.models import Model, Sequential
 from keras.layers import Input, Conv2D, Lambda, Add, LeakyReLU, \
-                         MaxPooling2D, concatenate, UpSampling2D
+                         MaxPooling2D, concatenate, UpSampling2D,\
+                         Multiply
+
 
 
 def nrmse(y_true, y_pred):
@@ -165,13 +167,12 @@ def DC_block(rec,mask,sampled_kspace,kspace = False):
         rec_kspace = rec
     else:
         rec_kspace = Lambda(fft_layer)(rec)
-    rec_kspace_dc = Lambda(lambda rec_kspace : rec_kspace*mask)(rec_kspace)
+    rec_kspace_dc =  Multiply([rec_kspace,mask])
     rec_kspace_dc = Add()([rec_kspace_dc,sampled_kspace])
     return rec_kspace_dc
 
-def deep_cascade_flat_unrolled(mask,depth_str = 'ikikii', H=256,W=256,kshape = (3,3), nf = 48):
+def deep_cascade_flat_unrolled(depth_str = 'ikikii', H=256,W=256,kshape = (3,3), nf = 48):
     """
-    :param mask: undersampling mask
     :param depth_str: string that determines the depth of the cascade and the domain of each
     subnetwork
     :param H: Image heigh
@@ -183,6 +184,7 @@ def deep_cascade_flat_unrolled(mask,depth_str = 'ikikii', H=256,W=256,kshape = (
 
     channels = 2 # inputs are represented as 2-channel images
     inputs = Input(shape=(H,W,channels))
+    mask = Input(shape=(H,W,channels))
     layers = [inputs]
     
     for ii in depth_str:
@@ -203,9 +205,8 @@ def deep_cascade_flat_unrolled(mask,depth_str = 'ikikii', H=256,W=256,kshape = (
     return model
 
 
-def deep_cascade_unet(mask, depth_str='ki', H=256, W=256, kshape=(3, 3)):
+def deep_cascade_unet(depth_str='ki', H=256, W=256, kshape=(3, 3)):
     """
-    :param mask: undersampling mask
     :param depth_str: string that determines the depth of the cascade and the domain of each
     subnetwork
     :param H: Image heigh
@@ -217,6 +218,7 @@ def deep_cascade_unet(mask, depth_str='ki', H=256, W=256, kshape=(3, 3)):
 
     channels = 2  # inputs are represented as 2-channel images
     inputs = Input(shape=(H, W, channels))
+    mask = Input(shape=(H, W, channels))
     layers = [inputs]
 
     for ii in depth_str:
