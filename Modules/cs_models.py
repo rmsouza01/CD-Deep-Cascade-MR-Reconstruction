@@ -4,8 +4,6 @@ from keras.layers import Input, Conv2D, Lambda, Add, LeakyReLU, \
                          MaxPooling2D, concatenate, UpSampling2D,\
                          Multiply
 
-
-
 def nrmse(y_true, y_pred):
     """
     Normalized Root Mean Squared Error (NRMSE) - Euclidean distance normalization
@@ -102,7 +100,7 @@ def cnn_block(cnn_input, depth, nf, kshape):
 
     for ii in range(depth):
         # Add convolutional block
-        layers.append(Conv2D(nf, kshape, activation=LeakyReLU(alpha=0.1),padding='same')(layers[-1]))
+        layers.append(Conv2D(nf, kshape, activation=LeakyReLU(alpha=0.1),padding='same')(layers[-1]))#LeakyReLU(alpha=0.1)
     final_conv = Conv2D(2, (1, 1), activation='linear')(layers[-1])
     rec1 = Add()([final_conv,cnn_input])
     return rec1
@@ -167,11 +165,11 @@ def DC_block(rec,mask,sampled_kspace,kspace = False):
         rec_kspace = rec
     else:
         rec_kspace = Lambda(fft_layer)(rec)
-    rec_kspace_dc =  Multiply([rec_kspace,mask])
+    rec_kspace_dc =  Multiply()([rec_kspace,mask])
     rec_kspace_dc = Add()([rec_kspace_dc,sampled_kspace])
     return rec_kspace_dc
 
-def deep_cascade_flat_unrolled(depth_str = 'ikikii', H=256,W=256,kshape = (3,3), nf = 48):
+def deep_cascade_flat_unrolled(depth_str = 'ikikii', H=256,W=256,depth = 5,kshape = (3,3), nf = 48):
     """
     :param depth_str: string that determines the depth of the cascade and the domain of each
     subnetwork
@@ -186,22 +184,22 @@ def deep_cascade_flat_unrolled(depth_str = 'ikikii', H=256,W=256,kshape = (3,3),
     inputs = Input(shape=(H,W,channels))
     mask = Input(shape=(H,W,channels))
     layers = [inputs]
-    
+    kspace_flag = True
     for ii in depth_str:
-        kspace_flag = True
+        
         if ii =='i':
             # Add IFFT
             layers.append(Lambda(ifft_layer)(layers[-1]))
             kspace_flag = False
         # Add CNN block
-        layers.append(cnn_block(layers[-1],nf,kshape))
+        layers.append(cnn_block(layers[-1],depth,nf,kshape))
 
         # Add DC block
         layers.append(DC_block(layers[-1],mask,inputs,kspace=kspace_flag))
-
+        kspace_flag = True
     out = Lambda(ifft_layer)(layers[-1])
     out2 = Lambda(abs_layer)(out)
-    model = Model(inputs=inputs, outputs=[out,out2])
+    model = Model(inputs=[inputs,mask], outputs=[out,out2])
     return model
 
 
@@ -220,9 +218,9 @@ def deep_cascade_unet(depth_str='ki', H=256, W=256, kshape=(3, 3)):
     inputs = Input(shape=(H, W, channels))
     mask = Input(shape=(H, W, channels))
     layers = [inputs]
-
+    kspace_flag = True
     for ii in depth_str:
-        kspace_flag = True
+        
         if ii == 'i':
             # Add IFFT
             layers.append(Lambda(ifft_layer)(layers[-1]))
@@ -232,9 +230,9 @@ def deep_cascade_unet(depth_str='ki', H=256, W=256, kshape=(3, 3)):
 
         # Add DC block
         layers.append(DC_block(layers[-1], mask, inputs, kspace=kspace_flag))
-
+        kspace_flag = True
     out = Lambda(ifft_layer)(layers[-1])
     out2 = Lambda(abs_layer)(out)
-    model = Model(inputs=inputs, outputs=[out, out2])
+    model = Model(inputs=[inputs,mask], outputs=[out, out2])
     return model
 
