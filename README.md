@@ -19,7 +19,7 @@ In this repository we  will look into:
 - Cross domain cascades (k-space and image domains);
 - Different sampling pattern distributions;
 - Potential advantages of including adversarial components;
-
+- Single-channel versus multi-channel models
 
 Updated: 17 July 2019
 
