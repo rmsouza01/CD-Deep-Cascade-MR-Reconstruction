@@ -10,7 +10,7 @@ Preliminary work on single-channel MR reconstruction was published at the 2019 M
 
 
 ![Sample Multi-channel Reconstruction](./Figs/midl_mc_5x.gif)
-Sample reconstruction. From left to right: KIKIKI, IIIIII, IKIKII fkat unrolled cascades. They all have the same exact number of parameters.
+Sample reconstruction. From left to right: KIKIKI, IIIIII, IKIKII flat unrolled cascades. They all have the same exact number of parameters.
 
 In this repository we  will look into:
 
