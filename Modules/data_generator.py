@@ -4,7 +4,7 @@ import os
 
 class DataGenerator(keras.utils.Sequence):
     'Generates data for Keras'
-    def __init__(self, list_IDs,under_masks,norm,batch_size=8, dim=(218,170), n_channels=2,
+    def __init__(self, list_IDs,under_masks,norm,batch_size=8, dim=(218,170), n_channels=24,
                  shuffle=True):
         self.dim = dim
         self.batch_size = batch_size
@@ -46,20 +46,22 @@ class DataGenerator(keras.utils.Sequence):
         'Generates data containing batch_size samples' # X : (n_samples, *dim, n_channels)
         # Initialization
         X = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
-        y1 = np.empty((self.batch_size, self.dim[0],self.dim[1], 2))
-        y2 = np.empty((self.batch_size, self.dim[0],self.dim[1], 1))
+        mask = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
+        y1 = np.empty((self.batch_size, self.dim[0],self.dim[1], self.n_channels))
 
         # Generate data
         for i, ID in enumerate(list_IDs_temp):
             # Store sample
             aux = np.load(ID)/self.norm
-            X[i,:,:,0] = aux.real
-            X[i,:,:,1] = aux.imag
-        aux2 = np.fft.ifft2(X[i,:,:,0]+1j*X[i,:,:,1])
-        y1[:,:,:,0] = aux2.real
-        y1[:,:,:,0] = aux2.imag
-        y2[:,:,:,0] = np.abs(aux2)
+            if aux.shape[1] == 170:
+                X[i,:,:,:] = aux
+            else:
+                X[i,:,:,:] = aux[:,2:-2,:]
+                
+        aux2 = np.fft.ifft2(X[:,:,:,::2]+1j*X[:,:,:,1::2],axes = (1,2))
+        y1[:,:,:,::2] = aux2.real
+        y1[:,:,:,1::2] = aux2.imag
         indexes = np.random.choice(np.arange(self.under_masks.shape[0], dtype=int), self.batch_size, replace = True)
-        mask_X = self.under_masks[indexes] 
-        X[mask_X] = 0 
-        return [X,mask_X], [y1,y2]
+        mask = self.under_masks[indexes] 
+        X[mask] = 0 
+        return [X,mask], y1
