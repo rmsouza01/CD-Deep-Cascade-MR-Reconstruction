@@ -1,35 +1,10 @@
-from keras import backend as K
-from keras.models import Model, Sequential
-from keras.layers import Input, Conv2D, Lambda, Add, LeakyReLU, \
-                         MaxPooling2D, concatenate, UpSampling2D,\
-                         Multiply
-from keras.layers import ZeroPadding2D, Cropping2D
-def nrmse(y_true, y_pred):
-    """
-    Normalized Root Mean Squared Error (NRMSE) - Euclidean distance normalization
-    :param y_true: Reference
-    :param y_pred: Predicted
-    :return:
-    """
-
-    denom = K.max(y_true, axis=(1,2,3)) - K.min(y_true, axis=(1,2,3))
-    return K.sqrt(K.mean(K.square(y_pred - y_true), axis=(1,2,3)))\
-    /denom
-
-
-def nrmse_min_max(y_true, y_pred):
-    """
-     Normalized Root Mean Squared Error (NRMSE) - min-max normalization
-     :param y_true: Reference
-     :param y_pred: Predicted
-     :return:
-     """
-
-    denom = K.sqrt(K.mean(K.square(y_true), axis=(1,2,3)))
-    return K.sqrt(K.mean(K.square(y_pred - y_true), axis=(1,2,3)))\
-    /denom
-
-
+import tensorflow as tf
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Conv2D, Lambda, Add, LeakyReLU,  \
+                                    MaxPooling2D, concatenate, UpSampling2D,\
+                                    Multiply, ZeroPadding2D, Cropping2D
+from tensorflow.keras import regularizers
+  
 def fft_layer(image):
     nchannels = 24
     for ii in range(0,nchannels,2):
@@ -38,16 +13,16 @@ def fft_layer(image):
         real = Lambda(lambda image: image[:, :, :, ii])(image)
         imag = Lambda(lambda image: image[:, :, :, ii+1])(image)
 
-        image_complex = K.tf.complex(real, imag)  # Make complex-valued tensor
-        kspace_complex = K.tf.fft2d(image_complex)
+        image_complex = tf.complex(real, imag)  # Make complex-valued tensor
+        kspace_complex = tf.signal.fft2d(image_complex)
 
         # expand channels to tensorflow/keras format
-        real = K.tf.expand_dims(K.tf.real(kspace_complex), -1)
-        imag = K.tf.expand_dims(K.tf.imag(kspace_complex), -1)
+        real = tf.expand_dims(tf.math.real(kspace_complex), -1)
+        imag = tf.expand_dims(tf.math.imag(kspace_complex), -1)
         if ii == 0: 
-            kspace = K.tf.concat([real, imag], -1)
+            kspace = tf.concat([real, imag], -1)
         else:
-            kspace = K.tf.concat([kspace,real, imag], -1)
+            kspace = tf.concat([kspace,real, imag], -1)
     return kspace
 
 
@@ -58,20 +33,20 @@ def ifft_layer(kspace_2channel):
         real = Lambda(lambda kspace_2channel : kspace_2channel[:,:,:,ii])(kspace_2channel)
         imag = Lambda(lambda kspace_2channel : kspace_2channel[:,:,:,ii+1])(kspace_2channel)
 
-        kspace_complex = K.tf.complex(real,imag) # Make complex-valued tensor
-        image_complex = K.tf.ifft2d(kspace_complex)
+        kspace_complex = tf.complex(real,imag) # Make complex-valued tensor
+        image_complex = tf.signal.ifft2d(kspace_complex)
 
         # expand channels to tensorflow/keras format
-        real = K.tf.expand_dims(K.tf.real(image_complex),-1)
-        imag = K.tf.expand_dims(K.tf.imag(image_complex),-1)
+        real = tf.expand_dims(tf.math.real(image_complex),-1)
+        imag = tf.expand_dims(tf.math.imag(image_complex),-1)
         if ii == 0: 
             # generate 2-channel representation of image domain
-            image_complex_2channel = K.tf.concat([real, imag], -1)
+            image_complex_2channel = tf.concat([real, imag], -1)
         else:
-            image_complex_2channel = K.tf.concat([image_complex_2channel, real, imag], -1)
+            image_complex_2channel = tf.concat([image_complex_2channel, real, imag], -1)
     return image_complex_2channel
 
-def cnn_block(cnn_input, depth, nf, kshape,channels):
+def cnn_block(cnn_input, depth, nf, kshape,channels,reg = 0.001):
     """
     :param cnn_input: Input layer to CNN block
     :param depth: Depth of CNN. Disregarding the final convolution block that goes back to
@@ -84,7 +59,8 @@ def cnn_block(cnn_input, depth, nf, kshape,channels):
 
     for ii in range(depth):
         # Add convolutional block
-        layers.append(Conv2D(nf, kshape, activation=LeakyReLU(alpha=0.1),padding='same')(layers[-1]))#LeakyReLU(alpha=0.1)
+        layers.append(Conv2D(nf, kshape, padding='same')(layers[-1]))
+        layers.append(LeakyReLU(alpha=0.1)(layers[-1]))
     final_conv = Conv2D(channels, (1, 1), activation='linear')(layers[-1])
     rec1 = Add()([final_conv,cnn_input])
     return rec1
@@ -135,6 +111,40 @@ def unet_block(unet_input, kshape=(3, 3),channels = 24):
     out = Add()([conv8, unet_input])
     return out
 
+def unet_block2(unet_input, kshape=(3, 3),channels = 24):
+    """
+    :param unet_input: Input layer
+    :param kshape: Kernel size
+    :return: 2-channel, complex reconstruction
+    """
+
+    conv1 = Conv2D(48, kshape, activation='relu', padding='same')(unet_input)
+    conv1 = Conv2D(48, kshape, activation='relu', padding='same')(conv1)
+    conv1 = Conv2D(48, kshape, activation='relu', padding='same')(conv1)
+    pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
+
+    conv2 = Conv2D(96, kshape, activation='relu', padding='same')(pool1)
+    conv2 = Conv2D(96, kshape, activation='relu', padding='same')(conv2)
+    conv2 = Conv2D(96, kshape, activation='relu', padding='same')(conv2)
+    pool2 = MaxPooling2D(pool_size=(2, 2))(conv2)
+
+    conv3 = Conv2D(192, kshape, activation='relu', padding='same')(pool2)
+    conv3 = Conv2D(192, kshape, activation='relu', padding='same')(conv3)
+    conv3 = Conv2D(192, kshape, activation='relu', padding='same')(conv3)
+    
+    up1 = concatenate([UpSampling2D(size=(2, 2))(conv3), conv2], axis=-1)
+    conv4 = Conv2D(96, kshape, activation='relu', padding='same')(up1)
+    conv4 = Conv2D(96, kshape, activation='relu', padding='same')(conv4)
+    conv4 = Conv2D(96, kshape, activation='relu', padding='same')(conv4)
+
+    up2 = concatenate([UpSampling2D(size=(2, 2))(conv4), conv1], axis=-1)
+    conv5 = Conv2D(48, kshape, activation='relu', padding='same')(up2)
+    conv5 = Conv2D(48, kshape, activation='relu', padding='same')(conv5)
+    conv5 = Conv2D(48, kshape, activation='relu', padding='same')(conv5)
+
+    conv6 = Conv2D(channels, (1, 1), activation='linear')(conv5)
+    out = Add()([conv6, unet_input])
+    return out
 
 def DC_block(rec,mask,sampled_kspace,channels,kspace = False):
     """
@@ -184,11 +194,6 @@ def deep_cascade_flat_unrolled(depth_str = 'ikikii', H=256,W=256,depth = 5,kshap
     model = Model(inputs=[inputs,mask], outputs=out)
     return model
 
-def tf_ifft2d(H,W,channels):
-    inputs = Input(shape=(H,W,channels))
-    out = Lambda(ifft_layer)(inputs)
-    model = Model(inputs=inputs, outputs=out)
-    return model
 
 def deep_cascade_unet(depth_str='ki', H=218, W=170, Hpad = 3, Wpad = 3, kshape=(3, 3),channels = 24):
 
